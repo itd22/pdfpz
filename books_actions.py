@@ -1,5 +1,4 @@
 import shutil
-import tempfile
 from pathlib import Path, PurePosixPath
 from pprint import pformat
 
@@ -13,12 +12,6 @@ from pdf_list_parallel_threads import (
 from pdf_names_conversion import PdfPath
 from PdfManifestEntry import BooksLib, BooksManifest, PdfManifestEntry
 import yaml
-
-
-def tmp_dir() -> Path:
-    flat_tmp_path = tempfile.mkdtemp()
-    shallow_tmp = Path(flat_tmp_path)
-    return shallow_tmp
 
 
 class BooksActions:
@@ -97,60 +90,47 @@ class BooksActions:
             if len(book.title) == 0 and len(book.author) == 0 and len(book.isbn) == 0:
                 self.move_temp_no_title_or_author(book)
 
-    def load_books_lib_operations(
-        self,
-        tmp_path: str = None,
-        update_yaml_info: bool = False,
-        copy_pdfs: bool = False,
-        move_no_info: bool = False,
-        sanitize_didier: bool = False,
-        fitz_didier: bool = False,
-        sanitize_info: bool = False,
-        print_first: bool = False,
-    ):
-        """Load books manifest and perform requested operations."""
-        logger.info(f"sanitize_info={sanitize_info}")
+    def print_first_entry(self):
+        """Print first entry and temp directory contents."""
+        books_manifest: BooksManifest = self.books_lib.books_manifest
+        print(f"books_lib.books_manifest = {type(self.books_lib.books_manifest)}")
+        print(f"books_manifest = {type(books_manifest)}")
+        books_count = len(books_manifest.books)
+        print(f"count={books_count}")
+        first_entry: PdfManifestEntry | None = next(iter(books_manifest.books), None)
+        first_entry: PdfManifestEntry = books_manifest.books[2]
+        print(f"first entry: {pformat(first_entry)}")
+        for path in self.books_lib.tmp_path.iterdir():
+            info = path.stat()
+            print(f"source {PurePosixPath(path).name}")
+            print(f"{self.books_lib.tmp_path}/{path.name} {info.st_size}")
+
+    def load_manifest(self, tmp_path: str = None) -> None:
+        """Load books manifest into books_lib."""
         if not tmp_path:
-            tmp_path = tmp_dir()
+            # Create a temporary directory if needed
+            import tempfile
+            tmp_path = tempfile.mkdtemp()
+        
         self.books_lib.tmp_path = tmp_path
         logger.info(f"loaded {pformat(self.books_lib)}")
         print()
         self.books_lib.books_manifest = self.load_books_manifest(self.books_lib.yaml_path)
-        books_manifest: BooksManifest = self.books_lib.books_manifest
-        
-        if copy_pdfs:
-            self.copy_yaml_pdf()
-        
-        if print_first:
-            print(f"books_lib.books_manifest = {type(self.books_lib.books_manifest)}")
-            print(f"books_manifest = {type(books_manifest)}")
-            books_count = len(books_manifest.books)
-            print(f"count={books_count}")
-            first_entry: PdfManifestEntry | None = next(iter(books_manifest.books), None)
-            first_entry: PdfManifestEntry = books_manifest.books[2]
-            print(f"first entry: {pformat(first_entry)}")
-            if copy_pdfs:
-                self.copy_to_temp(first_entry)
-            for path in self.books_lib.tmp_path.iterdir():
-                info = path.stat()
-                print(f"source {PurePosixPath(path).name}")
-                print(f"{self.books_lib.tmp_path}/{path.name} {info.st_size}")
-        
-        if update_yaml_info:
-            logger.info("updating yaml info for books")
-            threadpool_books_info(self.books_lib)
-            self.save_books_manifest(self.books_lib.books_manifest, "files_info.yaml")
-        
-        if move_no_info:
-            self.move_to_no_info()
-        
-        if sanitize_didier:
-            threadpool_books_sanitize(self.books_lib)
-        
-        if fitz_didier:
-            threadpool_books_fitz_sanitize(self.books_lib)
-        
-        if sanitize_info:
-            threadpool_embed_info(self.books_lib)
-        else:
-            logger.info("not doing sanitize_info")
+
+    def update_yaml_info(self) -> None:
+        """Update YAML info for books using threadpool."""
+        logger.info("updating yaml info for books")
+        threadpool_books_info(self.books_lib)
+        self.save_books_manifest(self.books_lib.books_manifest, "files_info.yaml")
+
+    def sanitize_didier(self) -> None:
+        """Sanitize books using didier finds."""
+        threadpool_books_sanitize(self.books_lib)
+
+    def fitz_didier(self) -> None:
+        """Fitz and move books using didier finds."""
+        threadpool_books_fitz_sanitize(self.books_lib)
+
+    def sanitize_info(self) -> None:
+        """Sanitize and embed info into PDFs."""
+        threadpool_embed_info(self.books_lib)
