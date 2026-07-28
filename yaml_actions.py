@@ -1,12 +1,10 @@
-import tempfile
 from pathlib import Path
 from pprint import pformat
 
 import click
-import yaml
 
 from logger import logger
-from books_actions import BooksActions, tmp_dir
+from books_actions import BooksActions
 from PdfManifestEntry import BooksLib
 
 
@@ -24,24 +22,45 @@ def load_books_lib(
     """Load books library and perform requested operations."""
     logger.info(f"sanitize_info={sanitize_info}")
     books_lib: BooksLib = BooksLib.from_yaml_path(yaml_path)
-    if not tmp_path:
-        tmp_path = tmp_dir()
-    books_lib.tmp_path = tmp_path
+
+    # Normalize tmp_path to a string (click may provide a Path)
+    if tmp_path:
+        tmp_path = str(tmp_path)
+    else:
+        # allow BooksActions.load_manifest to create a temp dir when None
+        tmp_path = None
+
+    books_lib.tmp_path = tmp_path or ""
     logger.info(f"loaded {pformat(books_lib)}")
     print()
-    
+
     # Create BooksActions instance and perform operations
     actions = BooksActions(books_lib)
-    actions.load_books_lib_operations(
-        tmp_path=tmp_path,
-        update_yaml_info=update_yaml_info,
-        copy_pdfs=copy_pdfs,
-        move_no_info=move_no_info,
-        sanitize_didier=sanitize_didier,
-        fitz_didier=fitz_didier,
-        sanitize_info=sanitize_info,
-        print_first=print_first,
-    )
+
+    # Ensure manifest is loaded (this will set up tmp dir if needed)
+    actions.load_manifest(tmp_path=tmp_path)
+
+    # Perform requested operations by calling the appropriate BooksActions methods
+    if copy_pdfs:
+        actions.copy_yaml_pdf()
+
+    if update_yaml_info:
+        actions.update_yaml_info()
+
+    if move_no_info:
+        actions.move_to_no_info()
+
+    if sanitize_didier:
+        actions.sanitize_didier()
+
+    if fitz_didier:
+        actions.fitz_didier()
+
+    if sanitize_info:
+        actions.sanitize_info()
+
+    if print_first:
+        actions.print_first_entry()
 
 
 # --------------------------------------------------------------------------
@@ -67,7 +86,7 @@ def load_books_lib(
 )
 def main(
     yaml_path: str,
-    tmp_path: str,
+    tmp_path: Path,
     update_yaml_info: bool,
     copy_pdfs: bool,
     move_no_info: bool,
